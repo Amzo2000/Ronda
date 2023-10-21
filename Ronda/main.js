@@ -142,7 +142,7 @@ class Game {
     setupCards() {
         if (this.setupCardByStep(this.middleCards, 4)) {
             if (this.setupCardByStep(this.players[0], 3)) {
-                if (this.setupCardByStep(this.players[1], 3)) {
+                if (this.setupCardByStep(this.players[1], 3, false)) {
                     this.canPlay = true;
                     this.cardsConfigured = true;
                 }
