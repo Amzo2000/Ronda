@@ -18,8 +18,23 @@ const buttonRestart = document.querySelector('.restart');
 const loader = document.querySelector('.loading');
 const bar = document.querySelector('.bar');
 
+const bonusBoard = document.querySelector('.bonus');
+
+const muteButton = document.querySelector('.muteButton');
+
+function drawText(pos, text, color, fontSize, align = 'start', fontWeight = 'normal', strokeStyle = '#00000000') {
+    context.fillStyle = color;
+    context.strokeStyle = strokeStyle;
+    context.lineWidth = 1;
+    context.textAlign = align;
+    context.font = fontWeight + ' ' + fontSize + 'px Arial';
+    context.fillText(text, pos.x, pos.y);
+    context.strokeText(text, pos.x, pos.y);
+}
+
 class Game {
     constructor() {
+        this.muted = false;
         this.cards = [];
         this.players = [];
         this.listener();
@@ -30,13 +45,16 @@ class Game {
         this.time = 0;
         this.canPlay = false;
         this.cardsConfigured = false;
-        this.finished = false;
         this.gameFinished = false;
         this.playFirst = false;
         this.start = false;
         this.totalFile = 40;
         this.fileLoadedCount = 0;
         this.fileLoaded = false;
+        this.playersRondaBonus = null;
+        this.songsBackground = [];
+        this.initSongs();
+        this.currentSongIndex = 0;
         //this.initPlayers();
         this.initGame();
     }
@@ -44,7 +62,41 @@ class Game {
         message.innerHTML = 'Appuyez sur la button < Jouer >';
         buttonRestart.innerHTML = 'Jouer';
     }
+    initSongs() {
+        this.songsBackground = [
+            new Audio('./songs/bgs1.ogg'),
+            new Audio('./songs/bgs2.ogg')
+        ];
+        for (let song of this.songsBackground) {
+            song.volume = 0.25;
+        }
+        this.songsBackground.sort(() => Math.random() * 2 - 1);
+    }
+    playSong() {
+        this.songsBackground[this.currentSongIndex].play();
+        this.songsBackground[this.currentSongIndex].onended = () => {
+            this.currentSongIndex += 1;
+            this.currentSongIndex %= this.songsBackground.length;
+            this.playSong();
+        }
+    }
+    muteSong() {
+        this.muted = !this.muted;
+        for (let song of this.songsBackground) {
+            song.volume = this.muted ? 0 : .25;
+        }
+        const img = this.muted ? './assets/icons/volume-mute-line.svg' : './assets/icons/volume-up-line.svg';
+        muteButton.querySelector('img').setAttribute('src', img);
+    }
+    stopSong() {
+        if (this.songsBackground[this.currentSongIndex].paused) return;
+        this.songsBackground[this.currentSongIndex].pause();
+        this.songsBackground[this.currentSongIndex].currentTime = 0;
+        this.currentSongIndex += 1;
+        this.currentSongIndex %= this.songsBackground.length;
+    }
     restart() {
+        this.playSong();
         stats.style.width = '0%';
         this.start = true;
         this.players = [];
@@ -58,7 +110,6 @@ class Game {
         this.time = 0;
         this.canPlay = false;
         this.cardsConfigured = false;
-        this.finished = false;
         this.playSongFinish = false;
         this.gameFinished = false;
         this.playFirst = !this.playFirst;
@@ -66,6 +117,9 @@ class Game {
         this.initPlayers();
     }
     showStats() {
+        this.stopSong();
+        if (buttonRestart.attributes.getNamedItem('disabled'))
+            buttonRestart.attributes.removeNamedItem('disabled');
         const score = this.players[0].score - this.players[1].score;
         if (score < 0) {
             if (!this.playSongFinish) new Audio('./songs/loss.ogg').play();
@@ -84,16 +138,12 @@ class Game {
     showConfigBoard(pos) {
         const playerCards = this.collectedCards.cards.player.length;
         const AICards = this.collectedCards.cards.AI.length;
-        context.font = '18px Arial';
-        context.fillStyle = '#000';
-        context.fillText('Niveau: ' + this.level, pos.x, pos.y);
-        context.fillStyle = '#000';
-        context.fillText('Score: ', pos.x, pos.y + 25);
-        context.fillStyle = '#fff';
-        context.fillText('- Joueur : ' + this.players[0].score + ' pts', pos.x, pos.y + 50);
-        context.fillText('- AI : ' + this.players[1].score + ' pts', pos.x, pos.y + 75);
-        context.font = '12px Arial';
-        context.fillText(`Cartes : Joueur - ${playerCards}, AI - ${AICards}`, pos.x, pos.y + 100);
+
+        drawText(pos, 'Niveau: ' + this.level, '#000', 18);
+        drawText(pos.add(new Vector2(0, 25)), 'Score: ', '#000', 18);
+        drawText(pos.add(new Vector2(0, 50)), '- Joueur : ' + this.players[0].score + ' pts', '#fff', 18);
+        drawText(pos.add(new Vector2(0, 75)), '- AI : ' + this.players[1].score + ' pts', '#fff', 18);
+        drawText(pos.add(new Vector2(0, 100)), `Cartes : Joueur - ${playerCards}, AI - ${AICards}`, '#000', 12);
     }
     initPlayers() {
         this.players.push(
@@ -133,6 +183,7 @@ class Game {
             }
             const playerCardsLength = parent.cards.length;
             if (playerCardsLength) {
+
                 if (show) parent.cards[playerCardsLength - 1].onSwitched = true;
             }
             this.time = 0;
@@ -160,7 +211,7 @@ class Game {
                 }
             }
         } else {
-            for (let i = 0; i < this.cards.length; i++) {
+            for (let i = this.cards.length - 1; i >= 0; i--) {
                 this.cards[i].restart(width - 60, 80);
             }
         }
@@ -180,7 +231,7 @@ class Game {
             this.middleCards.update();
             this.collectedCards.update();
 
-            if (!this.cardsConfigured && !this.finished) this.setupCards();
+
 
             if (this.collectedCards.onCollecting) {
                 this.canPlay = false;
@@ -193,7 +244,6 @@ class Game {
             }
             if (remainCards === 0) {
                 this.cardsConfigured = false;
-                this.finished = true;
             }
             if (this.gameFinished) {
                 this.time += 1000 / FPS;
@@ -201,10 +251,66 @@ class Game {
                     this.showStats();
                 }
             }
+
+            if (!this.cardsConfigured && remainCards > 0) this.setupCards();
         }
         for (let card of this.cards) {
             card.update();
         }
+
+        if (this.collectedCards) {
+            const scoreAnimations = this.collectedCards.scoreAnimations;
+            if (scoreAnimations.length) {
+                for (let animation of scoreAnimations) {
+                    animation.update();
+                }
+            }
+        }
+
+        if (this.playersRondaBonus) {
+            let value = this.playersRondaBonus.animationCurrentTime;
+            value = 1 - (value) ** (1 / (0.5 * value))
+            for (let i = 0; i < this.playersRondaBonus.players.length; i++) {
+                const player = this.playersRondaBonus.players[i];
+                const sameCards = this.playersRondaBonus.playersBonus[i];
+                let bonusName = '';
+                let score = 0;
+                if (this.playersRondaBonus.winnerPlayer instanceof Player) {
+                    if (this.playersRondaBonus.winnerPlayer === player)
+                        score = this.playersRondaBonus.score;
+                } else {
+                    score = this.playersRondaBonus.score;
+                }
+                if (sameCards.length < 2) continue;
+                if (sameCards.length === 2) {
+                    bonusName = 'RONDA +' + score;
+                }
+                if (sameCards.length === 3) {
+                    bonusName = 'TRINGA +' + score;
+                }
+                drawText(player.pos, bonusName, `rgba(255, 255, 255, ${value})`, 32, 'center', 'bold', `rgba(0, 0, 0, ${value})`);
+            }
+        }
+
+        // Verification si le jeu est terminé.
+        let remainCards = 0;
+        for (let card of this.cards) {
+            if (card.player === null) {
+                remainCards++;
+            }
+        }
+        if (remainCards === 0) {
+            let isPlayersCardsFinished = -1;
+            for (let player of this.players) {
+                if (player.cards.length === 0) isPlayersCardsFinished += 1;
+            }
+            if (isPlayersCardsFinished > 0) {
+                if (!this.collectedCards.onCollecting && !this.collectedCards.onGettingDerba) {
+                    if (!this.collectedCards.lastCollecting)
+                        this.collectedCards.beginCollectingLastCards(this.middleCards.lastGetter);
+                }
+            }
+        };
     }
     mouseCollision(card) {
         if (this.mouse.x >= card.pos.x - card.size.x * .5 && this.mouse.x <= card.pos.x + card.size.x * .5) {
@@ -219,6 +325,7 @@ class Game {
             this.mouse = new Vector2(e.pageX, e.pageY);
             for (let i = this.cards.length - 1; i >= 0; i--) {
                 const card = this.cards[i];
+                if (card.blocked) continue;
                 if (card.player !== this.players[0] || !this.canPlay) continue;
                 if (!this.players[0].canPlay) continue;
                 if (this.mouseCollision(card) && !this.onSelected) {
@@ -245,6 +352,20 @@ class Game {
                 }
             }
         });
+        addEventListener('dblclick', () => {
+            for (let i = this.cards.length - 1; i >= 0; i--) {
+                const card = this.cards[i];
+                if (card.blocked) continue;
+                if (card.player !== this.players[0] || !this.canPlay) continue;
+                if (!this.players[0].canPlay) continue;
+                if (this.mouseCollision(card) && !this.onSelected) {
+                    this.players[0].sendCardDblClick(card);
+                    //new Audio('./songs/dragged.ogg').play();
+                    card.setToFirstPlace();
+                    this.onSelected = true;
+                }
+            }
+        });
     }
 }
 
@@ -253,8 +374,12 @@ const game = new Game();
 buttonRestart.addEventListener('click', () => {
     new Audio('./songs/select.ogg').play();
     game.restart();
+    buttonRestart.setAttribute('disabled', '');
 });
 
+muteButton.addEventListener('click', () => {
+    game.muteSong();
+});
 
 setInterval(() => {
     background('#e29c26');
@@ -269,5 +394,7 @@ setInterval(() => {
     } else {
         bar.style.width = `${Math.round(game.fileLoadedCount / game.totalFile * 100)}%`;
     }
+
+    for (let animation of Animation2.animations) animation.update();
 
 }, 1000 / FPS);
